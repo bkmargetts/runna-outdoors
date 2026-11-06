@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Runna → WorkOutDoors</title>
+  <meta name="description" content="Turn a Runna session into WorkOutDoors-ready files: a route with a cue at every rep, a FIT course timed to your paces, an interval schedule card and a FIT workout.">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23f97316'/><path d='M7 22l6-9 4 5 3-4 5 8' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1><span class="logo" aria-hidden="true"></span>Runna <span class="arrow">→</span> WorkOutDoors</h1>
+      <p class="tag">Bring a structured Runna session onto your wrist in WorkOutDoors — reps, recoveries, paces and route.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 1. SESSION -->
+    <section class="card" id="sec-session">
+      <h2><span class="num">1</span> Session</h2>
+      <p class="hint">Paste the session from Runna — the workout title and the step lines (Warm-up, Set, Rest, Cool down). Any of the usual formats work.</p>
+      <textarea id="paste" rows="6" spellcheck="false" placeholder="Warm-up. 1.5km at conversational pace.&#10;Set. Repeat x6: 400m at 4:10/km&#10;Rest. 90s walking rest&#10;Cool down. 1km at a conversational pace."></textarea>
+      <div class="row">
+        <button id="btn-parse" class="primary">Read session</button>
+        <button id="btn-sample" class="ghost">Try an example</button>
+        <label class="ghost file-btn">Open .json<input type="file" id="file-json" accept=".json,application/json" hidden></label>
+      </div>
+      <ul id="warnings" class="warnings" hidden></ul>
+
+      <div id="editor-wrap" hidden>
+        <div class="workout-head">
+          <input id="w-name" class="name-input" aria-label="Workout name">
+          <div class="seg" role="radiogroup" aria-label="Units">
+            <button data-unit="km" role="radio">km</button>
+            <button data-unit="mi" role="radio">mi</button>
+          </div>
+        </div>
+        <div id="timeline" class="timeline" aria-hidden="true"></div>
+        <div id="summary" class="summary"></div>
+        <div id="editor" class="editor"></div>
+        <div class="row">
+          <button class="ghost" data-add="step">+ Step</button>
+          <button class="ghost" data-add="repeat">+ Repeat block</button>
+        </div>
+        <details class="settings">
+          <summary>Pace assumptions</summary>
+          <div class="grid3">
+            <label>Target ± <input id="opt-tol" type="number" min="0" max="60" step="1"> s<span class="u">/km</span></label>
+            <label>Easy pace <input id="opt-easy" placeholder="6:30"><span class="u">/km</span></label>
+            <label>Walk pace <input id="opt-walk" placeholder="10:00"><span class="u">/km</span></label>
+          </div>
+          <p class="hint">Runna gives one pace per rep; WorkOutDoors wants a range, so a single pace becomes target ± this. Easy and walk paces are only used to estimate how far you'll travel during timed steps (e.g. a 90s walk) so route cues land in the right place.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- 2. ROUTE -->
+    <section class="card" id="sec-route">
+      <h2><span class="num">2</span> Route <span class="opt">optional</span></h2>
+      <p class="hint">Attach a GPX or TCX route (export one from WorkOutDoors, Strava, Komoot, Footpath, plotaroute…). Every step boundary becomes a cue on the route, so your watch tells you when each rep and recovery starts.</p>
+      <div class="row">
+        <label class="primary file-btn">Choose route file<input type="file" id="file-route" accept=".gpx,.tcx,application/gpx+xml,application/xml,text/xml" hidden></label>
+        <button id="btn-clear-route" class="ghost" hidden>Remove route</button>
+      </div>
+      <div id="route-info" class="summary" hidden></div>
+      <div id="route-opts" class="grid3" hidden>
+        <label>If the route is too short
+          <select id="opt-extend">
+            <option value="auto">Auto (loop or out-and-back)</option>
+            <option value="loop">Repeat laps</option>
+            <option value="outback">Out-and-back</option>
+            <option value="none">Leave as is</option>
+          </select>
+        </label>
+        <label>Workout starts after <input id="opt-offset" type="number" min="0" step="50" value="0"> m of route</label>
+      </div>
+      <div id="map" class="map" hidden></div>
+      <ol id="cue-list" class="cue-list" hidden></ol>
+    </section>
+
+    <!-- 3. EXPORT -->
+    <section class="card" id="sec-export">
+      <h2><span class="num">3</span> Send to WorkOutDoors</h2>
+      <div id="export-empty" class="hint">Read a session first.</div>
+      <div id="export" hidden>
+        <div class="exports">
+          <div class="exp" id="exp-course">
+            <h3>Route with step cues</h3>
+            <p>Route + a cue at every rep, recovery and the finish. Records are timed to your planned paces. <span class="needs-route">Needs a route.</span></p>
+            <div class="row">
+              <button class="primary" data-dl="fit-course">FIT course</button>
+              <button class="ghost" data-dl="gpx">GPX</button>
+              <button class="ghost share-only" data-share="fit-course">Share…</button>
+            </div>
+          </div>
+          <div class="exp">
+            <h3>Interval schedule</h3>
+            <p>The exact steps to set up in WorkOutDoors → Settings → Interval Schedules, so the watch runs the session with pace alerts.</p>
+            <div class="row">
+              <button class="primary" id="btn-card">Show schedule card</button>
+              <button class="ghost" id="btn-copy">Copy as text</button>
+            </div>
+          </div>
+          <div class="exp">
+            <h3>FIT workout</h3>
+            <p>Structured workout (steps, repeats, pace ranges) in the standard format. Not currently imported by WorkOutDoors, but works with Garmin, COROS and others.</p>
+            <div class="row">
+              <button class="ghost" data-dl="fit-workout">FIT workout</button>
+              <button class="ghost" data-dl="json">Session .json</button>
+              <button class="ghost" id="btn-link">Copy share link</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="card" class="sched" hidden></div>
+
+        <details class="howto" open>
+          <summary>How to get it onto your watch</summary>
+          <ol>
+            <li><b>Route:</b> on your iPhone, tap <i>FIT course</i> (or <i>Share…</i>), then open the file in <b>WorkOutDoors</b> — from the share sheet, or via Files → the file → Share → WorkOutDoors. In WorkOutDoors, sync the route to the watch from the Routes list.</li>
+            <li><b>Schedule:</b> open the schedule card, then in WorkOutDoors on iPhone go to <b>Settings → Interval Schedules → +</b> and add the steps as shown. Repeats map to a repeat block; nested repeats are already unrolled for you.</li>
+            <li><b>On the watch:</b> pick the route on the map, choose a running workout, select the interval schedule, and start. Cues fire as you reach each step's start point; the schedule drives the step timing and pace alerts.</li>
+            <li><b>Splits:</b> set WorkOutDoors' auto-lap to <i>off</i> (or per-interval) for interval sessions so lap splits line up with Runna's reps; for easy/long runs, 1 km / 1 mi auto-laps match Runna's splits.</li>
+          </ol>
+          <p class="hint">Time-based steps (e.g. 90s walk) are placed on the route using your estimated pace, so their cues are approximate (marked ≈). Distance steps are exact.</p>
+        </details>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <p>Everything runs in your browser — nothing is uploaded. Not affiliated with Runna or WorkOutDoors.</p>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
