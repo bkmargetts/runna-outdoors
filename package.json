@@ -1,0 +1,13 @@
+{
+  "name": "runna-outdoors",
+  "private": true,
+  "type": "module",
+  "description": "Turn a Runna session into WorkOutDoors-ready files: route cues, FIT course, FIT workout and an interval schedule card.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "npx --yes http-server -c-1 -p 8080 ."
+  },
+  "devDependencies": {
+    "@garmin/fitsdk": "^21.158.0"
+  }
+}
